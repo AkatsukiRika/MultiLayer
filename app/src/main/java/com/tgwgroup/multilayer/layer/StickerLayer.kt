@@ -13,9 +13,9 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
 
-class ImageLayer(private val context: Context) : ILayer {
+class StickerLayer(private val context: Context) : ILayer {
     companion object {
-        const val TAG = "ImageLayer"
+        const val TAG = "StickerLayer"
     }
 
     private var textureId: Int = -1
@@ -30,12 +30,29 @@ class ImageLayer(private val context: Context) : ILayer {
     private var zOrder: Int = 0
     private var bitmap: Bitmap? = null
 
+    // 贴纸位置、缩放和旋转参数
+    private var positionX: Float = 0f
+    private var positionY: Float = 0f
+    private var scale: Float = 1.0f
+    private var rotation: Float = 0f
+
+    // 视口尺寸
+    private var viewportWidth: Int = 0
+    private var viewportHeight: Int = 0
+
+    // 贴纸尺寸
+    private var stickerWidth: Int = 0
+    private var stickerHeight: Int = 0
+
+    // MVP矩阵
+    private val mvpMatrix = FloatArray(16)
+
     // 顶点坐标
     private val vertexData = floatArrayOf(
-        -1.0f, -1.0f, 0.0f,  // 左下
-        1.0f, -1.0f, 0.0f,   // 右下
-        -1.0f, 1.0f, 0.0f,   // 左上
-        1.0f, 1.0f, 0.0f     // 右上
+        -0.5f, -0.5f, 0.0f,  // 左下
+        0.5f, -0.5f, 0.0f,   // 右下
+        -0.5f, 0.5f, 0.0f,   // 左上
+        0.5f, 0.5f, 0.0f     // 右上
     )
 
     // 纹理坐标
@@ -64,6 +81,28 @@ class ImageLayer(private val context: Context) : ILayer {
 
     fun setImage(bmp: Bitmap) {
         bitmap = bmp
+        stickerWidth = bmp.width
+        stickerHeight = bmp.height
+        updateModelMatrix()
+    }
+
+    // 设置贴纸位置（以屏幕像素为单位）
+    fun setPosition(x: Float, y: Float) {
+        positionX = x
+        positionY = y
+        updateModelMatrix()
+    }
+
+    // 设置贴纸缩放比例
+    fun setScale(scale: Float) {
+        this.scale = scale
+        updateModelMatrix()
+    }
+
+    // 设置贴纸旋转角度（以度为单位）
+    fun setRotation(degrees: Float) {
+        this.rotation = degrees
+        updateModelMatrix()
     }
 
     override fun onSurfaceCreated() {
@@ -135,7 +174,11 @@ class ImageLayer(private val context: Context) : ILayer {
         GLES20.glDeleteShader(fragmentShader)
     }
 
-    override fun onSurfaceChanged(width: Int, height: Int) {}
+    override fun onSurfaceChanged(width: Int, height: Int) {
+        viewportWidth = width
+        viewportHeight = height
+        updateModelMatrix()
+    }
 
     override fun draw() {
         if (bitmap == null) {
@@ -154,15 +197,17 @@ class ImageLayer(private val context: Context) : ILayer {
         GLES20.glVertexAttribPointer(texCoordHandle, 2, GLES20.GL_FLOAT, false, 0, texCoordBuffer)
         GLES20.glEnableVertexAttribArray(texCoordHandle)
 
-        // 设置MVP矩阵 (单位矩阵)
-        val mvpMatrix = FloatArray(16)
-        Matrix.setIdentityM(mvpMatrix, 0)
+        // 设置MVP矩阵
         GLES20.glUniformMatrix4fv(mvpMatrixHandle, 1, false, mvpMatrix, 0)
 
         // 设置纹理
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureId)
         GLES20.glUniform1i(textureHandle, 0)
+
+        // 启用混合模式以支持透明度
+        GLES20.glEnable(GLES20.GL_BLEND)
+        GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA)
 
         // 绘制
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
@@ -187,5 +232,27 @@ class ImageLayer(private val context: Context) : ILayer {
 
     override fun getZOrder(): Int {
         return zOrder
+    }
+
+    private fun updateModelMatrix() {
+        if (viewportWidth == 0 || viewportHeight == 0) {
+            return
+        }
+
+        // 重置为单位矩阵
+        Matrix.setIdentityM(mvpMatrix, 0)
+
+        // 将原点移到贴纸位置
+        val normalizedX = 2.0f * positionX / viewportWidth - 1.0f
+        val normalizedY = 1.0f - 2.0f * positionY / viewportHeight
+        Matrix.translateM(mvpMatrix, 0, normalizedX, normalizedY, 0f)
+
+        // 应用旋转
+        Matrix.rotateM(mvpMatrix, 0, rotation, 0f, 0f, 1f)
+
+        // 应用缩放
+        val widthScale = scale * stickerWidth.toFloat() / viewportWidth
+        val heightScale = scale * stickerHeight.toFloat() / viewportHeight
+        Matrix.scaleM(mvpMatrix, 0, widthScale * 2, heightScale * 2, 1f)
     }
 }

@@ -10,6 +10,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.tgwgroup.multilayer.databinding.ActivityMainBinding
 import com.tgwgroup.multilayer.layer.ImageLayer
+import com.tgwgroup.multilayer.layer.StickerLayer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -42,6 +43,25 @@ class MainActivity : AppCompatActivity() {
             imageLayer.setZOrder(0)
             imageLayer.setImage(bitmap)
             renderer?.addLayer(imageLayer)
+
+            // 添加贴纸图层
+            val stickerLayer = StickerLayer(this@MainActivity)
+            val stickerBmp = BitmapFactory.decodeResource(resources, R.drawable.img_sticker_demo)
+            stickerLayer.setZOrder(1)
+            stickerLayer.setImage(stickerBmp)
+
+            // 设置贴纸位置
+            val width = binding.surfaceView.width
+            val height = binding.surfaceView.height
+            stickerLayer.setPosition(width / 2f, height / 2f)
+
+            // 设置贴纸缩放
+            stickerLayer.setScale(0.5f)
+
+            // 设置贴纸旋转
+            stickerLayer.setRotation(0f)
+
+            renderer?.addLayer(stickerLayer)
         }
     }
 
