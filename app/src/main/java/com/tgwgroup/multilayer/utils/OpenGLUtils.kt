@@ -25,6 +25,20 @@ val basicFragmentShader = """
     }
 """.trimIndent()
 
+val grayFilterFragmentShader = """
+    precision mediump float;
+    varying vec2 v_TexCoord;
+    uniform sampler2D u_Texture;
+    uniform float u_Intensity; // 滤镜强度 (0.0-1.0)
+    
+    void main() {
+        vec4 color = texture2D(u_Texture, v_TexCoord);
+        float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+        vec4 grayColor = vec4(vec3(gray), color.a);
+        gl_FragColor = mix(color, grayColor, u_Intensity);
+    }
+""".trimIndent()
+
 fun compileShader(tag: String, type: Int, shaderCode: String): Int {
     val shader = GLES20.glCreateShader(type)
     GLES20.glShaderSource(shader, shaderCode)
