@@ -57,10 +57,10 @@ class StickerLayer(private val context: Context) : ILayer {
 
     // 纹理坐标
     private val texCoordData = floatArrayOf(
-        0.0f, 1.0f,  // 左下
-        1.0f, 1.0f,  // 右下
-        0.0f, 0.0f,  // 左上
-        1.0f, 0.0f   // 右上
+        0.0f, 0.0f,  // 左下
+        1.0f, 0.0f,  // 右下
+        0.0f, 1.0f,  // 左上
+        1.0f, 1.0f   // 右上
     )
 
     init {
@@ -235,24 +235,56 @@ class StickerLayer(private val context: Context) : ILayer {
     }
 
     private fun updateModelMatrix() {
-        if (viewportWidth == 0 || viewportHeight == 0) {
+        // 确保视口和贴纸尺寸有效
+        if (viewportWidth == 0 || viewportHeight == 0 || stickerWidth == 0 || stickerHeight == 0) {
+            Log.e(TAG, "updateModelMatrix skipped: Invalid dimensions.")
+            // 可以选择设置一个默认矩阵或者直接返回，避免后续计算出错
+            Matrix.setIdentityM(mvpMatrix, 0)
             return
         }
 
-        // 重置为单位矩阵
-        Matrix.setIdentityM(mvpMatrix, 0)
+        // --- 1. 计算模型矩阵 (Model Matrix) ---
+        // 将模型坐标系 [-0.5, 0.5] 变换到世界坐标系 (像素坐标)
+        // 变换顺序: Scale -> Rotate -> Translate
+        // OpenGL 矩阵乘法顺序: M_model = M_translate * M_rotate * M_scale
 
-        // 将原点移到贴纸位置
-        val normalizedX = 2.0f * positionX / viewportWidth - 1.0f
-        val normalizedY = 1.0f - 2.0f * positionY / viewportHeight
-        Matrix.translateM(mvpMatrix, 0, normalizedX, normalizedY, 0f)
+        val modelMatrix = FloatArray(16)
+        Matrix.setIdentityM(modelMatrix, 0)
 
-        // 应用旋转
-        Matrix.rotateM(mvpMatrix, 0, rotation, 0f, 0f, 1f)
+        // 1a. 平移到目标中心点 (像素坐标)
+        // 将模型原点 (0,0) 移动到屏幕像素坐标 (positionX, positionY)
+        Matrix.translateM(modelMatrix, 0, positionX, positionY, 0f)
 
-        // 应用缩放
-        val widthScale = scale * stickerWidth.toFloat() / viewportWidth
-        val heightScale = scale * stickerHeight.toFloat() / viewportHeight
-        Matrix.scaleM(mvpMatrix, 0, widthScale * 2, heightScale * 2, 1f)
+        // 1b. 旋转
+        // 围绕当前原点 (即贴纸中心) 旋转
+        Matrix.rotateM(modelMatrix, 0, rotation, 0f, 0f, 1f)
+
+        // 1c. 缩放
+        // 将原始的 1x1 (-0.5 to 0.5) quad 缩放到最终的像素尺寸
+        val finalPixelWidth = stickerWidth * scale
+        val finalPixelHeight = stickerHeight * scale
+        // 缩放操作应该保持贴纸的宽高比
+        Matrix.scaleM(modelMatrix, 0, finalPixelWidth, finalPixelHeight, 1f)
+
+
+        // --- 2. 计算投影矩阵 (Projection Matrix) ---
+        // 将世界坐标系 (像素坐标) 映射到 NDC 坐标 [-1, 1]
+        // 使用正交投影，同时处理视口宽高比和 Y 轴反转
+        // (屏幕坐标 Y=0 在顶部, OpenGL NDC Y=0 / Y=-1 在底部)
+
+        val projectionMatrix = FloatArray(16)
+        Matrix.setIdentityM(projectionMatrix, 0)
+        // orthoM(m, mOffset, left, right, bottom, top, near, far)
+        // left=0, right=viewportWidth
+        // bottom=viewportHeight (对应 NDC -1), top=0 (对应 NDC +1) -> Y轴反转
+        Matrix.orthoM(projectionMatrix, 0, 0f, viewportWidth.toFloat(), viewportHeight.toFloat(), 0f, -1f, 1f)
+
+
+        // --- 3. 计算最终的 MVP 矩阵 ---
+        // MVP = Projection * View * Model
+        // 假设 View 矩阵是单位矩阵 (View Matrix = Identity)
+        // MVP = Projection * Model
+
+        Matrix.multiplyMM(mvpMatrix, 0, projectionMatrix, 0, modelMatrix, 0)
     }
 }

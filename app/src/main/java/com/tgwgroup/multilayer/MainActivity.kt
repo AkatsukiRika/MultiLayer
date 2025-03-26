@@ -57,10 +57,10 @@ class MainActivity : AppCompatActivity() {
             stickerLayer.setPosition(width / 2f, height / 2f)
 
             // 设置贴纸缩放
-            stickerLayer.setScale(0.5f)
+            stickerLayer.setScale(1f)
 
             // 设置贴纸旋转
-            stickerLayer.setRotation(0f)
+            stickerLayer.setRotation(90f)
 
             renderer?.addLayer(stickerLayer)
 
