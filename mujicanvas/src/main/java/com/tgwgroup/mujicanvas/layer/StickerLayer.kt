@@ -1,6 +1,5 @@
 package com.tgwgroup.mujicanvas.layer
 
-import android.content.Context
 import android.graphics.Bitmap
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
@@ -15,10 +14,7 @@ import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import kotlin.concurrent.Volatile
 
-class StickerLayer(
-    private val context: Context,
-    private val glSurfaceView: GLSurfaceView
-) : ILayer {
+class StickerLayer(private val surfaceView: GLSurfaceView) : ILayer {
     companion object {
         const val TAG = "StickerLayer"
     }
@@ -90,7 +86,7 @@ class StickerLayer(
     }
 
     fun setImage(bmp: Bitmap) {
-        glSurfaceView.queueEvent {
+        surfaceView.queueEvent {
             MujicaLog.i(TAG, "开始设置贴纸图片")
             // 释放旧纹理（如果存在）
             if (textureId != -1 && isTextureLoaded) {
@@ -123,44 +119,44 @@ class StickerLayer(
             isTextureLoaded = true
             MujicaLog.i(TAG, "贴纸图片设置完成, 宽度: $stickerWidth, 高度: $stickerHeight")
             updateModelMatrix()
-            glSurfaceView.requestRender()
+            surfaceView.requestRender()
             pendingBitmap = null
         }
     }
 
     // 设置贴纸位置（以屏幕像素为单位）
     fun setPosition(x: Float, y: Float) {
-        glSurfaceView.queueEvent {
+        surfaceView.queueEvent {
             if (this.positionX != x || this.positionY != y) {
                 MujicaLog.i(TAG, "设置贴纸位置: ($x, $y)")
                 positionX = x
                 positionY = y
                 updateModelMatrix()
-                glSurfaceView.requestRender()
+                surfaceView.requestRender()
             }
         }
     }
 
     // 设置贴纸缩放比例
     fun setScale(scale: Float) {
-        glSurfaceView.queueEvent {
+        surfaceView.queueEvent {
             if (this.scale != scale) {
                 MujicaLog.i(TAG, "设置贴纸缩放比例: $scale")
                 this.scale = scale
                 updateModelMatrix()
-                glSurfaceView.requestRender()
+                surfaceView.requestRender()
             }
         }
     }
 
     // 设置贴纸旋转角度（以度为单位）
     fun setRotation(degrees: Float) {
-        glSurfaceView.queueEvent {
+        surfaceView.queueEvent {
             if (this.rotation != degrees) {
                 MujicaLog.i(TAG, "设置贴纸旋转角度: $degrees")
                 this.rotation = degrees
                 updateModelMatrix()
-                glSurfaceView.requestRender()
+                surfaceView.requestRender()
             }
         }
     }
@@ -293,7 +289,7 @@ class StickerLayer(
 
     override fun release() {
         MujicaLog.i(TAG, "释放贴纸图层资源")
-        glSurfaceView.queueEvent {
+        surfaceView.queueEvent {
             if (program > 0) {
                 GLES20.glDeleteProgram(program)
                 program = -1

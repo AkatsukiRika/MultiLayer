@@ -40,10 +40,10 @@ class MainActivity : AppCompatActivity() {
         binding.surfaceView.renderMode = GLSurfaceView.RENDERMODE_WHEN_DIRTY
 
         lifecycleScope.launch(Dispatchers.IO) {
-            val imageLayer = ImageLayer(this@MainActivity)
+            val imageLayer = ImageLayer(binding.surfaceView)
             val bitmap = BitmapFactory.decodeResource(resources, R.drawable.img_demo)
 
-            val stickerLayer = StickerLayer(this@MainActivity, binding.surfaceView)
+            val stickerLayer = StickerLayer(binding.surfaceView)
             val stickerBmp = BitmapFactory.decodeResource(resources, R.drawable.img_sticker_demo)
 
             val filterLayer = FilterLayer(this@MainActivity)

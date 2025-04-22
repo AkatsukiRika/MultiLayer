@@ -1,10 +1,10 @@
 package com.tgwgroup.mujicanvas.layer
 
-import android.content.Context
 import android.graphics.Bitmap
 import android.opengl.GLES20
+import android.opengl.GLSurfaceView
 import android.opengl.Matrix
-import android.util.Log
+import com.tgwgroup.mujicanvas.utils.MujicaLog
 import com.tgwgroup.mujicanvas.utils.basicFragmentShader
 import com.tgwgroup.mujicanvas.utils.basicVertexShader
 import com.tgwgroup.mujicanvas.utils.compileShader
@@ -12,8 +12,9 @@ import com.tgwgroup.mujicanvas.utils.loadTexture
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
+import kotlin.concurrent.Volatile
 
-class ImageLayer(private val context: Context) : ILayer {
+class ImageLayer(private val surfaceView: GLSurfaceView) : ILayer {
     companion object {
         const val TAG = "ImageLayer"
     }
@@ -28,7 +29,10 @@ class ImageLayer(private val context: Context) : ILayer {
     private var vertexBuffer: FloatBuffer
     private var texCoordBuffer: FloatBuffer
     private var zOrder: Int = 0
-    private var bitmap: Bitmap? = null
+
+    @Volatile private var bitmap: Bitmap? = null
+    @Volatile private var isTextureLoaded = false
+    private var pendingBitmap: Bitmap? = null
 
     // 顶点坐标
     private val vertexData = floatArrayOf(
@@ -63,7 +67,41 @@ class ImageLayer(private val context: Context) : ILayer {
     }
 
     fun setImage(bmp: Bitmap) {
-        bitmap = bmp
+        pendingBitmap?.recycle()
+        pendingBitmap = bmp
+
+        surfaceView.queueEvent {
+            val bitmapToLoad = pendingBitmap ?: return@queueEvent
+            pendingBitmap = null
+
+            if (program <= 0) {
+                MujicaLog.w(TAG, "程序未创建，无法加载纹理")
+                pendingBitmap = bitmapToLoad
+                return@queueEvent
+            }
+
+            if (textureId != -1) {
+                GLES20.glDeleteTextures(1, intArrayOf(textureId), 0)
+                textureId = -1
+                isTextureLoaded = false
+            }
+
+            val textures = IntArray(1)
+            GLES20.glGenTextures(1, textures, 0)
+            textureId = textures[0]
+            if (textureId == 0) {
+                MujicaLog.e(TAG, "无法生成纹理ID")
+                textureId = -1
+                bitmapToLoad.recycle()
+                return@queueEvent
+            }
+            MujicaLog.i(TAG, "生成纹理ID: $textureId")
+
+            loadTexture(bitmapToLoad, textureId)
+            bitmap = bitmapToLoad
+            isTextureLoaded = true
+            surfaceView.requestRender()
+        }
     }
 
     override fun onSurfaceCreated() {
@@ -74,7 +112,7 @@ class ImageLayer(private val context: Context) : ILayer {
         // 创建程序
         program = GLES20.glCreateProgram()
         if (program == 0) {
-            Log.e(TAG, "无法创建程序对象")
+            MujicaLog.e(TAG, "无法创建程序对象")
             return
         }
 
@@ -88,7 +126,7 @@ class ImageLayer(private val context: Context) : ILayer {
         GLES20.glGetProgramiv(program, GLES20.GL_LINK_STATUS, linkStatus, 0)
         if (linkStatus[0] == 0) {
             val log = GLES20.glGetProgramInfoLog(program)
-            Log.e(TAG, "程序链接失败: $log")
+            MujicaLog.e(TAG, "程序链接失败: $log")
             GLES20.glDeleteProgram(program)
             return
         }
@@ -96,49 +134,44 @@ class ImageLayer(private val context: Context) : ILayer {
         // 获取attribute和uniform变量位置
         positionHandle = GLES20.glGetAttribLocation(program, "a_Position")
         if (positionHandle == -1) {
-            Log.e(TAG, "无法获取属性a_Position")
+            MujicaLog.e(TAG, "无法获取属性a_Position")
             return
         }
 
         texCoordHandle = GLES20.glGetAttribLocation(program, "a_TexCoord")
         if (texCoordHandle == -1) {
-            Log.e(TAG, "无法获取属性a_TexCoord")
+            MujicaLog.e(TAG, "无法获取属性a_TexCoord")
             return
         }
 
         mvpMatrixHandle = GLES20.glGetUniformLocation(program, "u_MVPMatrix")
         if (mvpMatrixHandle == -1) {
-            Log.e(TAG, "无法获取uniform变量u_MVPMatrix")
+            MujicaLog.e(TAG, "无法获取uniform变量u_MVPMatrix")
             return
         }
 
         textureHandle = GLES20.glGetUniformLocation(program, "u_Texture")
         if (textureHandle == -1) {
-            Log.e(TAG, "无法获取uniform变量u_Texture")
+            MujicaLog.e(TAG, "无法获取uniform变量u_Texture")
             return
         }
-
-        // 创建纹理
-        val textures = IntArray(1)
-        GLES20.glGenTextures(1, textures, 0)
-        textureId = textures[0]
-        if (textureId == 0) {
-            Log.e(TAG, "无法生成纹理ID")
-            return
-        }
-
-        // 加载图片到纹理
-        loadTexture(bitmap, textureId)
 
         // 清理着色器
         GLES20.glDeleteShader(vertexShader)
         GLES20.glDeleteShader(fragmentShader)
+
+        if (pendingBitmap != null) {
+            MujicaLog.i(TAG, "加载等待中的纹理ID: $textureId")
+            val bmpToLoad = pendingBitmap
+            pendingBitmap = null
+            setImage(bmpToLoad!!)
+        }
     }
 
     override fun onSurfaceChanged(width: Int, height: Int) {}
 
     override fun draw() {
-        if (bitmap == null) {
+        if (!isTextureLoaded || program <= 0 || textureId == -1) {
             return
         }
 
@@ -170,15 +203,26 @@ class ImageLayer(private val context: Context) : ILayer {
         // 清理
         GLES20.glDisableVertexAttribArray(positionHandle)
         GLES20.glDisableVertexAttribArray(texCoordHandle)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0)
+        GLES20.glUseProgram(0)
     }
 
     override fun release() {
-        if (textureId != -1) {
-            GLES20.glDeleteTextures(1, intArrayOf(textureId), 0)
-            textureId = -1
+        surfaceView.queueEvent {
+            if (program > 0) {
+                GLES20.glDeleteProgram(program)
+                program = -1
+            }
+            if (textureId != -1) {
+                GLES20.glDeleteTextures(1, intArrayOf(textureId), 0)
+                textureId = -1
+            }
+            isTextureLoaded = false
+            bitmap?.recycle()
+            bitmap = null
+            pendingBitmap?.recycle()
+            pendingBitmap = null
         }
-        bitmap?.recycle()
-        bitmap = null
     }
 
     override fun setZOrder(zOrder: Int) {
