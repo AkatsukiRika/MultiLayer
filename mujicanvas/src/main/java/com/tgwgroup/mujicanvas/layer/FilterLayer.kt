@@ -1,12 +1,12 @@
-package com.tgwgroup.multilayer.layer
+package com.tgwgroup.mujicanvas.layer
 
 import android.content.Context
 import android.opengl.GLES20
 import android.opengl.Matrix
 import android.util.Log
-import com.tgwgroup.multilayer.utils.basicVertexShader
-import com.tgwgroup.multilayer.utils.compileShader
-import com.tgwgroup.multilayer.utils.grayFilterFragmentShader
+import com.tgwgroup.mujicanvas.utils.basicVertexShader
+import com.tgwgroup.mujicanvas.utils.compileShader
+import com.tgwgroup.mujicanvas.utils.grayFilterFragmentShader
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer

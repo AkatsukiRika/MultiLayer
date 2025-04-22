@@ -1,17 +1,24 @@
-package com.tgwgroup.multilayer.utils
+package com.tgwgroup.mujicanvas.layer
 
+import android.content.Context
+import android.graphics.Bitmap
 import android.opengl.GLES20
 import android.opengl.Matrix
 import android.util.Log
+import com.tgwgroup.mujicanvas.utils.basicFragmentShader
+import com.tgwgroup.mujicanvas.utils.basicVertexShader
+import com.tgwgroup.mujicanvas.utils.compileShader
+import com.tgwgroup.mujicanvas.utils.loadTexture
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
 
-class TextureRenderer {
+class ImageLayer(private val context: Context) : ILayer {
     companion object {
-        private const val TAG = "TextureRenderer"
+        const val TAG = "ImageLayer"
     }
 
+    private var textureId: Int = -1
     private var program: Int = -1
     private var positionHandle: Int = -1
     private var texCoordHandle: Int = -1
@@ -20,8 +27,8 @@ class TextureRenderer {
 
     private var vertexBuffer: FloatBuffer
     private var texCoordBuffer: FloatBuffer
-
-    private var textureId: Int = -1
+    private var zOrder: Int = 0
+    private var bitmap: Bitmap? = null
 
     // 顶点坐标
     private val vertexData = floatArrayOf(
@@ -53,11 +60,13 @@ class TextureRenderer {
         texCoordBuffer = tb.asFloatBuffer()
         texCoordBuffer.put(texCoordData)
         texCoordBuffer.position(0)
-
-        createProgram()
     }
 
-    private fun createProgram() {
+    fun setImage(bmp: Bitmap) {
+        bitmap = bmp
+    }
+
+    override fun onSurfaceCreated() {
         // 编译着色器
         val vertexShader = compileShader(TAG, GLES20.GL_VERTEX_SHADER, basicVertexShader)
         val fragmentShader = compileShader(TAG, GLES20.GL_FRAGMENT_SHADER, basicFragmentShader)
@@ -86,21 +95,50 @@ class TextureRenderer {
 
         // 获取attribute和uniform变量位置
         positionHandle = GLES20.glGetAttribLocation(program, "a_Position")
+        if (positionHandle == -1) {
+            Log.e(TAG, "无法获取属性a_Position")
+            return
+        }
+
         texCoordHandle = GLES20.glGetAttribLocation(program, "a_TexCoord")
+        if (texCoordHandle == -1) {
+            Log.e(TAG, "无法获取属性a_TexCoord")
+            return
+        }
+
         mvpMatrixHandle = GLES20.glGetUniformLocation(program, "u_MVPMatrix")
+        if (mvpMatrixHandle == -1) {
+            Log.e(TAG, "无法获取uniform变量u_MVPMatrix")
+            return
+        }
+
         textureHandle = GLES20.glGetUniformLocation(program, "u_Texture")
+        if (textureHandle == -1) {
+            Log.e(TAG, "无法获取uniform变量u_Texture")
+            return
+        }
+
+        // 创建纹理
+        val textures = IntArray(1)
+        GLES20.glGenTextures(1, textures, 0)
+        textureId = textures[0]
+        if (textureId == 0) {
+            Log.e(TAG, "无法生成纹理ID")
+            return
+        }
+
+        // 加载图片到纹理
+        loadTexture(bitmap, textureId)
 
         // 清理着色器
         GLES20.glDeleteShader(vertexShader)
         GLES20.glDeleteShader(fragmentShader)
     }
 
-    fun setTexture(textureId: Int) {
-        this.textureId = textureId
-    }
+    override fun onSurfaceChanged(width: Int, height: Int) {}
 
-    fun draw() {
-        if (textureId == -1) {
+    override fun draw() {
+        if (bitmap == null) {
             return
         }
 
@@ -126,10 +164,6 @@ class TextureRenderer {
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureId)
         GLES20.glUniform1i(textureHandle, 0)
 
-        // 启用混合模式以支持透明度
-        GLES20.glEnable(GLES20.GL_BLEND)
-        GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE_MINUS_SRC_ALPHA)
-
         // 绘制
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
 
@@ -138,10 +172,20 @@ class TextureRenderer {
         GLES20.glDisableVertexAttribArray(texCoordHandle)
     }
 
-    fun release() {
-        if (program != -1) {
-            GLES20.glDeleteProgram(program)
-            program = -1
+    override fun release() {
+        if (textureId != -1) {
+            GLES20.glDeleteTextures(1, intArrayOf(textureId), 0)
+            textureId = -1
         }
+        bitmap?.recycle()
+        bitmap = null
+    }
+
+    override fun setZOrder(zOrder: Int) {
+        this.zOrder = zOrder
+    }
+
+    override fun getZOrder(): Int {
+        return zOrder
     }
 }

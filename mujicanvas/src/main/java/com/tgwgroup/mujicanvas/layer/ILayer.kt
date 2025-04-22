@@ -1,4 +1,4 @@
-package com.tgwgroup.multilayer.layer
+package com.tgwgroup.mujicanvas.layer
 
 interface ILayer {
     fun onSurfaceCreated()

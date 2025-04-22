@@ -1,18 +1,18 @@
-package com.tgwgroup.multilayer
+package com.tgwgroup.mujicanvas
 
 import android.content.Context
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
 import android.opengl.GLSurfaceView.Renderer
 import android.util.Log
-import com.tgwgroup.multilayer.layer.FilterLayer
-import com.tgwgroup.multilayer.layer.ILayer
-import com.tgwgroup.multilayer.utils.TextureRenderer
+import com.tgwgroup.mujicanvas.layer.FilterLayer
+import com.tgwgroup.mujicanvas.layer.ILayer
+import com.tgwgroup.mujicanvas.utils.TextureRenderer
 import java.util.concurrent.CopyOnWriteArrayList
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
-class MultiLayerRenderer(
+class MujicaRenderer(
     private val context: Context,
     private val surfaceView: GLSurfaceView
 ) : Renderer {

@@ -1,14 +1,14 @@
-package com.tgwgroup.multilayer.layer
+package com.tgwgroup.mujicanvas.layer
 
 import android.content.Context
 import android.graphics.Bitmap
 import android.opengl.GLES20
 import android.opengl.Matrix
 import android.util.Log
-import com.tgwgroup.multilayer.utils.basicFragmentShader
-import com.tgwgroup.multilayer.utils.basicVertexShader
-import com.tgwgroup.multilayer.utils.compileShader
-import com.tgwgroup.multilayer.utils.loadTexture
+import com.tgwgroup.mujicanvas.utils.basicFragmentShader
+import com.tgwgroup.mujicanvas.utils.basicVertexShader
+import com.tgwgroup.mujicanvas.utils.compileShader
+import com.tgwgroup.mujicanvas.utils.loadTexture
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer

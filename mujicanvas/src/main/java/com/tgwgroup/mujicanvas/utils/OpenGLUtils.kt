@@ -1,9 +1,8 @@
-package com.tgwgroup.multilayer.utils
+package com.tgwgroup.mujicanvas.utils
 
 import android.graphics.Bitmap
 import android.opengl.GLES20
 import android.opengl.GLUtils
-import android.util.Log
 
 val basicVertexShader = """
     attribute vec4 a_Position;
@@ -52,7 +51,7 @@ fun compileShader(tag: String, type: Int, shaderCode: String): Int {
         // 如果编译失败，获取错误信息
         val log = GLES20.glGetShaderInfoLog(shader)
         val shaderTypeString = if (type == GLES20.GL_VERTEX_SHADER) "顶点着色器" else "片段着色器"
-        Log.e(tag, "$shaderTypeString 编译失败: $log")
+        MujicaLog.e(tag, "$shaderTypeString 编译失败: $log")
 
         // 删除失败的着色器
         GLES20.glDeleteShader(shader)
