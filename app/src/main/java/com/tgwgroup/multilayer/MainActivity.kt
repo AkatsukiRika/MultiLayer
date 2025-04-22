@@ -11,6 +11,7 @@ import androidx.lifecycle.lifecycleScope
 import com.tgwgroup.mujicanvas.MujicaRenderer
 import com.tgwgroup.mujicanvas.layer.FilterLayer
 import com.tgwgroup.mujicanvas.layer.ImageLayer
+import com.tgwgroup.mujicanvas.layer.StickerLayer
 import com.tgwgroup.multilayer.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -41,34 +42,30 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             val imageLayer = ImageLayer(this@MainActivity)
             val bitmap = BitmapFactory.decodeResource(resources, R.drawable.img_demo)
-            imageLayer.setZOrder(0)
-            imageLayer.setImage(bitmap)
-            renderer?.addLayer(imageLayer)
 
-//            // 添加贴纸图层
-//            val stickerLayer = StickerLayer(this@MainActivity)
-//            val stickerBmp = BitmapFactory.decodeResource(resources, R.drawable.img_sticker_demo)
-//            stickerLayer.setZOrder(2)
-//            stickerLayer.setImage(stickerBmp)
-//
-//            // 设置贴纸位置
-//            val width = binding.surfaceView.width
-//            val height = binding.surfaceView.height
-//            stickerLayer.setPosition(width / 2f, height / 2f)
-//
-//            // 设置贴纸缩放
-//            stickerLayer.setScale(1f)
-//
-//            // 设置贴纸旋转
-//            stickerLayer.setRotation(90f)
-//
-//            renderer?.addLayer(stickerLayer)
+            val stickerLayer = StickerLayer(this@MainActivity, binding.surfaceView)
+            val stickerBmp = BitmapFactory.decodeResource(resources, R.drawable.img_sticker_demo)
 
-            // 添加滤镜图层
             val filterLayer = FilterLayer(this@MainActivity)
-            filterLayer.setIntensity(1f)
-            filterLayer.setZOrder(1)
-            renderer?.addLayer(filterLayer)
+
+            binding.surfaceView.queueEvent {
+                imageLayer.setZOrder(0)
+                imageLayer.setImage(bitmap)
+                renderer?.addLayer(imageLayer)
+
+                stickerLayer.setZOrder(2)
+                stickerLayer.setImage(stickerBmp)
+                stickerLayer.setScale(1f)
+                stickerLayer.setRotation(90f)
+                stickerLayer.setPosition(binding.surfaceView.width / 2f, binding.surfaceView.height / 2f)
+                renderer?.addLayer(stickerLayer)
+
+                filterLayer.setIntensity(1f)
+                filterLayer.setZOrder(1)
+                renderer?.addLayer(filterLayer)
+
+                binding.surfaceView.requestRender()
+            }
         }
     }
 

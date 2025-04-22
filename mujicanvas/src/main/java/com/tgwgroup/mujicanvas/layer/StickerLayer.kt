@@ -3,8 +3,9 @@ package com.tgwgroup.mujicanvas.layer
 import android.content.Context
 import android.graphics.Bitmap
 import android.opengl.GLES20
+import android.opengl.GLSurfaceView
 import android.opengl.Matrix
-import android.util.Log
+import com.tgwgroup.mujicanvas.utils.MujicaLog
 import com.tgwgroup.mujicanvas.utils.basicFragmentShader
 import com.tgwgroup.mujicanvas.utils.basicVertexShader
 import com.tgwgroup.mujicanvas.utils.compileShader
@@ -12,8 +13,12 @@ import com.tgwgroup.mujicanvas.utils.loadTexture
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
+import kotlin.concurrent.Volatile
 
-class StickerLayer(private val context: Context) : ILayer {
+class StickerLayer(
+    private val context: Context,
+    private val glSurfaceView: GLSurfaceView
+) : ILayer {
     companion object {
         const val TAG = "StickerLayer"
     }
@@ -28,13 +33,13 @@ class StickerLayer(private val context: Context) : ILayer {
     private var vertexBuffer: FloatBuffer
     private var texCoordBuffer: FloatBuffer
     private var zOrder: Int = 0
-    private var bitmap: Bitmap? = null
+    @Volatile private var bitmap: Bitmap? = null
 
     // 贴纸位置、缩放和旋转参数
-    private var positionX: Float = 0f
-    private var positionY: Float = 0f
-    private var scale: Float = 1.0f
-    private var rotation: Float = 0f
+    @Volatile private var positionX: Float = 0f
+    @Volatile private var positionY: Float = 0f
+    @Volatile private var scale: Float = 1.0f
+    @Volatile private var rotation: Float = 0f
 
     // 视口尺寸
     private var viewportWidth: Int = 0
@@ -46,6 +51,8 @@ class StickerLayer(private val context: Context) : ILayer {
 
     // MVP矩阵
     private val mvpMatrix = FloatArray(16)
+    private var isTextureLoaded = false
+    private var pendingBitmap: Bitmap? = null
 
     // 顶点坐标
     private val vertexData = floatArrayOf(
@@ -77,32 +84,85 @@ class StickerLayer(private val context: Context) : ILayer {
         texCoordBuffer = tb.asFloatBuffer()
         texCoordBuffer.put(texCoordData)
         texCoordBuffer.position(0)
+
+        // 初始化MVP矩阵
+        Matrix.setIdentityM(mvpMatrix, 0)
     }
 
     fun setImage(bmp: Bitmap) {
-        bitmap = bmp
-        stickerWidth = bmp.width
-        stickerHeight = bmp.height
-        updateModelMatrix()
+        glSurfaceView.queueEvent {
+            MujicaLog.i(TAG, "开始设置贴纸图片")
+            // 释放旧纹理（如果存在）
+            if (textureId != -1 && isTextureLoaded) {
+                GLES20.glDeleteTextures(1, intArrayOf(textureId), 0)
+                textureId = -1
+                isTextureLoaded = false
+            }
+            // 如果program未创建好，则不能生成纹理，将纹理暂存起来，等onSurfaceCreated创建program后再加载
+            if (program <= 0) {
+                pendingBitmap = bmp
+                MujicaLog.w(TAG, "program未创建, 贴纸图片暂存")
+                return@queueEvent
+            }
+            // 生成新纹理ID（如果需要）
+            if (textureId == -1) {
+                val textures = IntArray(1)
+                GLES20.glGenTextures(1, textures, 0)
+                textureId = textures[0]
+                if (textureId == 0) {
+                    MujicaLog.e(TAG, "无法生成纹理ID")
+                    textureId = -1
+                    return@queueEvent
+                }
+            }
+            // 加载纹理
+            loadTexture(bmp, textureId)
+            bitmap = bmp
+            stickerWidth = bmp.width
+            stickerHeight = bmp.height
+            isTextureLoaded = true
+            MujicaLog.i(TAG, "贴纸图片设置完成, 宽度: $stickerWidth, 高度: $stickerHeight")
+            updateModelMatrix()
+            glSurfaceView.requestRender()
+            pendingBitmap = null
+        }
     }
 
     // 设置贴纸位置（以屏幕像素为单位）
     fun setPosition(x: Float, y: Float) {
-        positionX = x
-        positionY = y
-        updateModelMatrix()
+        glSurfaceView.queueEvent {
+            if (this.positionX != x || this.positionY != y) {
+                MujicaLog.i(TAG, "设置贴纸位置: ($x, $y)")
+                positionX = x
+                positionY = y
+                updateModelMatrix()
+                glSurfaceView.requestRender()
+            }
+        }
     }
 
     // 设置贴纸缩放比例
     fun setScale(scale: Float) {
-        this.scale = scale
-        updateModelMatrix()
+        glSurfaceView.queueEvent {
+            if (this.scale != scale) {
+                MujicaLog.i(TAG, "设置贴纸缩放比例: $scale")
+                this.scale = scale
+                updateModelMatrix()
+                glSurfaceView.requestRender()
+            }
+        }
     }
 
     // 设置贴纸旋转角度（以度为单位）
     fun setRotation(degrees: Float) {
-        this.rotation = degrees
-        updateModelMatrix()
+        glSurfaceView.queueEvent {
+            if (this.rotation != degrees) {
+                MujicaLog.i(TAG, "设置贴纸旋转角度: $degrees")
+                this.rotation = degrees
+                updateModelMatrix()
+                glSurfaceView.requestRender()
+            }
+        }
     }
 
     override fun onSurfaceCreated() {
@@ -113,7 +173,7 @@ class StickerLayer(private val context: Context) : ILayer {
         // 创建程序
         program = GLES20.glCreateProgram()
         if (program == 0) {
-            Log.e(TAG, "无法创建程序对象")
+            MujicaLog.e(TAG, "无法创建程序对象")
             return
         }
 
@@ -127,7 +187,7 @@ class StickerLayer(private val context: Context) : ILayer {
         GLES20.glGetProgramiv(program, GLES20.GL_LINK_STATUS, linkStatus, 0)
         if (linkStatus[0] == 0) {
             val log = GLES20.glGetProgramInfoLog(program)
-            Log.e(TAG, "程序链接失败: $log")
+            MujicaLog.e(TAG, "程序链接失败: $log")
             GLES20.glDeleteProgram(program)
             return
         }
@@ -135,43 +195,53 @@ class StickerLayer(private val context: Context) : ILayer {
         // 获取attribute和uniform变量位置
         positionHandle = GLES20.glGetAttribLocation(program, "a_Position")
         if (positionHandle == -1) {
-            Log.e(TAG, "无法获取属性a_Position")
+            MujicaLog.e(TAG, "无法获取属性a_Position")
             return
         }
 
         texCoordHandle = GLES20.glGetAttribLocation(program, "a_TexCoord")
         if (texCoordHandle == -1) {
-            Log.e(TAG, "无法获取属性a_TexCoord")
+            MujicaLog.e(TAG, "无法获取属性a_TexCoord")
             return
         }
 
         mvpMatrixHandle = GLES20.glGetUniformLocation(program, "u_MVPMatrix")
         if (mvpMatrixHandle == -1) {
-            Log.e(TAG, "无法获取uniform变量u_MVPMatrix")
+            MujicaLog.e(TAG, "无法获取uniform变量u_MVPMatrix")
             return
         }
 
         textureHandle = GLES20.glGetUniformLocation(program, "u_Texture")
         if (textureHandle == -1) {
-            Log.e(TAG, "无法获取uniform变量u_Texture")
+            MujicaLog.e(TAG, "无法获取uniform变量u_Texture")
             return
         }
-
-        // 创建纹理
-        val textures = IntArray(1)
-        GLES20.glGenTextures(1, textures, 0)
-        textureId = textures[0]
-        if (textureId == 0) {
-            Log.e(TAG, "无法生成纹理ID")
-            return
-        }
-
-        // 加载图片到纹理
-        loadTexture(bitmap, textureId)
 
         // 清理着色器
         GLES20.glDeleteShader(vertexShader)
         GLES20.glDeleteShader(fragmentShader)
+
+        // 处理暂存的Bitmap（如果存在）
+        if (pendingBitmap != null && textureId == -1) {
+            MujicaLog.i(TAG, "处理暂存的贴纸图片")
+            val textures = IntArray(1)
+            GLES20.glGenTextures(1, textures, 0)
+            textureId = textures[0]
+            if (textureId == 0) {
+                MujicaLog.e(TAG, "无法为暂存Bitmap生成纹理ID")
+                textureId = -1
+                pendingBitmap = null
+                return
+            }
+            loadTexture(pendingBitmap, textureId)
+            bitmap = pendingBitmap
+            stickerWidth = pendingBitmap!!.width
+            stickerHeight = pendingBitmap!!.height
+            isTextureLoaded = true
+            MujicaLog.i(TAG, "暂存贴纸图片处理完成, 宽度: $stickerWidth, 高度: $stickerHeight")
+            updateModelMatrix()
+            pendingBitmap = null
+        }
     }
 
     override fun onSurfaceChanged(width: Int, height: Int) {
@@ -181,7 +251,7 @@ class StickerLayer(private val context: Context) : ILayer {
     }
 
     override fun draw() {
-        if (bitmap == null) {
+        if (!isTextureLoaded || program <= 0 || textureId == -1) {
             return
         }
 
@@ -215,15 +285,29 @@ class StickerLayer(private val context: Context) : ILayer {
         // 清理
         GLES20.glDisableVertexAttribArray(positionHandle)
         GLES20.glDisableVertexAttribArray(texCoordHandle)
+
+        // 解绑纹理和程序
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0)
+        GLES20.glUseProgram(0)
     }
 
     override fun release() {
-        if (textureId != -1) {
-            GLES20.glDeleteTextures(1, intArrayOf(textureId), 0)
-            textureId = -1
+        MujicaLog.i(TAG, "释放贴纸图层资源")
+        glSurfaceView.queueEvent {
+            if (program > 0) {
+                GLES20.glDeleteProgram(program)
+                program = -1
+            }
+            if (textureId != -1) {
+                GLES20.glDeleteTextures(1, intArrayOf(textureId), 0)
+                textureId = -1
+            }
+            isTextureLoaded = false
+            bitmap?.recycle()
+            bitmap = null
+            pendingBitmap?.recycle()
+            pendingBitmap = null
         }
-        bitmap?.recycle()
-        bitmap = null
     }
 
     override fun setZOrder(zOrder: Int) {
@@ -235,9 +319,10 @@ class StickerLayer(private val context: Context) : ILayer {
     }
 
     private fun updateModelMatrix() {
+        MujicaLog.i(TAG, "更新MVP矩阵, viewportWidth=$viewportWidth, viewportHeight=$viewportHeight, stickerWidth=$stickerWidth, stickerHeight=$stickerHeight")
+
         // 确保视口和贴纸尺寸有效
-        if (viewportWidth == 0 || viewportHeight == 0 || stickerWidth == 0 || stickerHeight == 0) {
-            Log.e(TAG, "updateModelMatrix skipped: Invalid dimensions.")
+        if (viewportWidth <= 0 || viewportHeight <= 0 || !isTextureLoaded || stickerWidth <= 0 || stickerHeight <= 0) {
             // 可以选择设置一个默认矩阵或者直接返回，避免后续计算出错
             Matrix.setIdentityM(mvpMatrix, 0)
             return
